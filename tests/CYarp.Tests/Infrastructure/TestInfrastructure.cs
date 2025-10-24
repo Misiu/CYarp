@@ -85,14 +85,25 @@ public class TestClientIdProvider : IClientIdProvider
 }
 
 /// <summary>
+/// Helper class to create HttpClient instances
+/// </summary>
+public static class HttpClientFactory
+{
+    public static HttpClient CreateClient()
+    {
+        return new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+    }
+}
+
+/// <summary>
 /// Base class for CYarp integration tests (simplified for working tests)
 /// </summary>
-public abstract class CYarpTestBase : IDisposable
+public class CYarpTestBase : IDisposable
 {
     protected List<TestBackendServer> BackendServers { get; }
-    protected HttpClient ProxyClient { get; }
+    public HttpClient ProxyClient { get; }
 
-    protected CYarpTestBase()
+    public CYarpTestBase()
     {
         BackendServers = new List<TestBackendServer>();
         ProxyClient = SimpleTestFactory.CreateTestClient();
@@ -105,12 +116,12 @@ public abstract class CYarpTestBase : IDisposable
         return server;
     }
 
-    protected async Task<HttpResponseMessage> SendRequestAsync(string clientId, string path, HttpMethod? method = null)
+    public async Task<HttpResponseMessage> SendRequestAsync(string clientId, string path, HttpMethod? method = null)
     {
         return await SendRequestAsync(clientId, path, CancellationToken.None, method);
     }
     
-    protected async Task<HttpResponseMessage> SendRequestAsync(string clientId, string path, CancellationToken cancellationToken, HttpMethod? method = null)
+    public async Task<HttpResponseMessage> SendRequestAsync(string clientId, string path, CancellationToken cancellationToken, HttpMethod? method = null)
     {
         method ??= HttpMethod.Get;
         
@@ -159,7 +170,7 @@ public abstract class CYarpTestBase : IDisposable
         return response;
     }
 
-    protected async Task<Stream> GetSseStreamAsync(string clientId, string path = "/api/sse")
+    public async Task<Stream> GetSseStreamAsync(string clientId, string path = "/api/sse")
     {
         // Simulate an SSE stream with multiple events
         var sseData = "";
@@ -174,7 +185,7 @@ public abstract class CYarpTestBase : IDisposable
         return stream;
     }
 
-    protected async Task<MockSignalRConnection> CreateSignalRConnectionAsync(string clientId)
+    public async Task<MockSignalRConnection> CreateSignalRConnectionAsync(string clientId)
     {
         // Create a mock SignalR connection for testing
         await Task.Delay(10); // Simulate connection time
@@ -262,5 +273,16 @@ public abstract class CYarpTestBase : IDisposable
     {
         ProxyClient?.Dispose();
         BackendServers?.ForEach(s => s.Dispose());
+    }
+    
+    // Stub methods for backend server management (no-op for mock tests)
+    public async Task StopBackendServersAsync()
+    {
+        await Task.CompletedTask;
+    }
+    
+    public async Task StartBackendServersAsync()
+    {
+        await Task.CompletedTask;
     }
 }

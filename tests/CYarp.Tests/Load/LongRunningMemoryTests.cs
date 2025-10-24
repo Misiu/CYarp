@@ -48,7 +48,7 @@ public class LongRunningMemoryTests
 
         try
         {
-            var stream = await _testBase.GetSseStreamAsync(client, "site1");
+            var stream = await _testBase.GetSseStreamAsync("site1");
             var reader = new StreamReader(stream);
 
             while (!cts.Token.IsCancellationRequested)
@@ -124,7 +124,7 @@ public class LongRunningMemoryTests
 
         while (DateTime.UtcNow - startTime < duration)
         {
-            var response = await _testBase.SendRequestAsync(client, "site1", "/api/weather");
+            var response = await _testBase.SendRequestAsync("site1", "/api/weather");
             Assert.Equal(200, (int)response.StatusCode);
             requestCount++;
 
@@ -183,10 +183,10 @@ public class LongRunningMemoryTests
         {
             // Create connection
             var connection = await _testBase.CreateSignalRConnectionAsync("site1");
-            await connection.InvokeAsync("SendMessage", "user", "test");
+            await connection.SendAsync("SendMessage", "user", "test");
             
             // Dispose connection
-            await connection.DisposeAsync();
+            connection.Dispose();
             connectionCycles++;
 
             if (DateTime.UtcNow - lastSnapshot > snapshotInterval)
@@ -226,7 +226,9 @@ public class LongRunningMemoryTests
         Console.WriteLine($"[START] Initial memory: {startMemory / 1024 / 1024}MB");
 
         var client = HttpClientFactory.CreateClient();
-        var stats = new { Http = 0, Sse = 0, SignalR = 0 };
+        var httpCount = 0;
+        var sseCount = 0;
+        var signalRCount = 0;
         var startTime = DateTime.UtcNow;
         var duration = TimeSpan.FromHours(2);
         var lastHourlyDump = DateTime.UtcNow;
@@ -241,8 +243,8 @@ public class LongRunningMemoryTests
             {
                 while (!cts.Token.IsCancellationRequested)
                 {
-                    await _testBase.SendRequestAsync(client, "site1", "/api/weather");
-                    Interlocked.Increment(ref stats.Http);
+                    await _testBase.SendRequestAsync("site1", "/api/weather");
+                    Interlocked.Increment(ref httpCount);
                     await Task.Delay(5000, cts.Token);
                 }
             }),
@@ -250,13 +252,13 @@ public class LongRunningMemoryTests
             // SSE stream
             Task.Run(async () =>
             {
-                var stream = await _testBase.GetSseStreamAsync(client, "site1");
+                var stream = await _testBase.GetSseStreamAsync("site1");
                 var reader = new StreamReader(stream);
                 while (!cts.Token.IsCancellationRequested)
                 {
                     var line = await reader.ReadLineAsync();
                     if (line?.StartsWith("data:") == true)
-                        Interlocked.Increment(ref stats.Sse);
+                        Interlocked.Increment(ref sseCount);
                 }
             }),
             
@@ -266,8 +268,8 @@ public class LongRunningMemoryTests
                 var connection = await _testBase.CreateSignalRConnectionAsync("site1");
                 while (!cts.Token.IsCancellationRequested)
                 {
-                    await connection.InvokeAsync("SendMessage", "user", "test");
-                    Interlocked.Increment(ref stats.SignalR);
+                    await connection.SendAsync("SendMessage", "user", "test");
+                    Interlocked.Increment(ref signalRCount);
                     await Task.Delay(10000, cts.Token);
                 }
             }),
@@ -282,16 +284,16 @@ public class LongRunningMemoryTests
                     // Hourly dumps for tests > 1 hour
                     if (DateTime.UtcNow - lastHourlyDump > TimeSpan.FromHours(1))
                     {
-                        var elapsed = DateTime.UtcNow - startTime;
-                        DiagDumps.WriteFullDump($"Mixed_2Hours_{elapsed.TotalHours:F1}h");
+                        var elapsedTime = DateTime.UtcNow - startTime;
+                        DiagDumps.WriteFullDump($"Mixed_2Hours_{elapsedTime.TotalHours:F1}h");
                         lastHourlyDump = DateTime.UtcNow;
                     }
                     
                     var currentMemory = GC.GetTotalMemory(false);
                     memorySnapshots.Add(currentMemory);
                     var growthMB = (currentMemory - startMemory) / 1024 / 1024;
-                    var elapsed = DateTime.UtcNow - startTime;
-                    Console.WriteLine($"[{elapsed:hh\\:mm}] Memory: {currentMemory / 1024 / 1024}MB (+{growthMB}MB), HTTP: {stats.Http}, SSE: {stats.Sse}, SignalR: {stats.SignalR}");
+                    var elapsedTime2 = DateTime.UtcNow - startTime;
+                    Console.WriteLine($"[{elapsedTime2:hh\\:mm}] Memory: {currentMemory / 1024 / 1024}MB (+{growthMB}MB), HTTP: {httpCount}, SSE: {sseCount}, SignalR: {signalRCount}");
                 }
             })
         };
@@ -311,7 +313,7 @@ public class LongRunningMemoryTests
         DiagDumps.WriteFullDump("Mixed_2Hours_end");
         
         Console.WriteLine($"[END] Final memory: {endMemory / 1024 / 1024}MB, Growth: {totalGrowthMB}MB");
-        Console.WriteLine($"Operations: HTTP: {stats.Http}, SSE: {stats.Sse}, SignalR: {stats.SignalR}");
+        Console.WriteLine($"Operations: HTTP: {httpCount}, SSE: {sseCount}, SignalR: {signalRCount}");
 
         Assert.True(totalGrowthMB < 300, $"Memory grew by {totalGrowthMB}MB, expected < 300MB");
     }
@@ -339,7 +341,7 @@ public class LongRunningMemoryTests
             
             try
             {
-                var stream = await _testBase.GetSseStreamAsync(client, "site1");
+                var stream = await _testBase.GetSseStreamAsync("site1");
                 var reader = new StreamReader(stream);
 
                 while (!cts.Token.IsCancellationRequested)
@@ -408,7 +410,7 @@ public class LongRunningMemoryTests
         {
             while (DateTime.UtcNow - startTime < duration)
             {
-                await _testBase.SendRequestAsync(client, "site1", "/api/weather");
+                await _testBase.SendRequestAsync("site1", "/api/weather");
                 Interlocked.Increment(ref requestCount);
                 await Task.Delay(1000);
             }
@@ -458,7 +460,7 @@ public class LongRunningMemoryTests
 
         while (DateTime.UtcNow - startTime < duration)
         {
-            await connection.InvokeAsync("SendMessage", "user", $"Message {messageCount}");
+            await connection.SendAsync("SendMessage", "user", $"Message {messageCount}");
             messageCount++;
 
             if (messageCount % 300 == 0) // Every 5 minutes
@@ -500,7 +502,7 @@ public class LongRunningMemoryTests
             // Create client, make request, dispose
             using (var client = HttpClientFactory.CreateClient())
             {
-                await _testBase.SendRequestAsync(client, "site1", "/api/weather");
+                await _testBase.SendRequestAsync("site1", "/api/weather");
             }
             
             tunnelCycles++;
@@ -543,14 +545,14 @@ public class LongRunningMemoryTests
         while (DateTime.UtcNow - startTime < duration)
         {
             // Simulate reconnection
-            await StopBackendServersAsync();
+            await _testBase.StopBackendServersAsync();
             await Task.Delay(2000);
-            await StartBackendServersAsync();
+            await _testBase.StartBackendServersAsync();
             await Task.Delay(2000);
 
             // Verify connection works
             using var client = HttpClientFactory.CreateClient();
-            var response = await _testBase.SendRequestAsync(client, "site1", "/api/weather");
+            var response = await _testBase.SendRequestAsync("site1", "/api/weather");
             Assert.Equal(200, (int)response.StatusCode);
             
             reconnectCycles++;
@@ -591,7 +593,10 @@ public class LongRunningMemoryTests
         Console.WriteLine("  Windows: perfmon, dotMemory, PerfView");
         Console.WriteLine("  Linux: top, htop, dotnet-dump");
 
-        var stats = new { Http = 0, Sse = 0, SignalR = 0, Errors = 0 };
+        var httpCount = 0;
+        var sseCount = 0;
+        var signalRCount = 0;
+        var errorCount = 0;
         var startTime = DateTime.UtcNow;
         var duration = TimeSpan.FromHours(4);
         var lastHourlyDump = DateTime.UtcNow;
@@ -608,11 +613,11 @@ public class LongRunningMemoryTests
                 {
                     try
                     {
-                        await _testBase.SendRequestAsync(client, "site1", "/api/weather");
-                        Interlocked.Increment(ref stats.Http);
+                        await _testBase.SendRequestAsync("site1", "/api/weather");
+                        Interlocked.Increment(ref httpCount);
                         await Task.Delay(5000, cts.Token);
                     }
-                    catch { Interlocked.Increment(ref stats.Errors); }
+                    catch { Interlocked.Increment(ref errorCount); }
                 }
             }),
             
@@ -624,17 +629,17 @@ public class LongRunningMemoryTests
                 {
                     try
                     {
-                        var stream = await _testBase.GetSseStreamAsync(client, "site1");
+                        var stream = await _testBase.GetSseStreamAsync("site1");
                         var reader = new StreamReader(stream);
                         for (int i = 0; i < 100 && !cts.Token.IsCancellationRequested; i++)
                         {
                             var line = await reader.ReadLineAsync();
                             if (line?.StartsWith("data:") == true)
-                                Interlocked.Increment(ref stats.Sse);
+                                Interlocked.Increment(ref sseCount);
                         }
                         await stream.DisposeAsync();
                     }
-                    catch { Interlocked.Increment(ref stats.Errors); }
+                    catch { Interlocked.Increment(ref errorCount); }
                     await Task.Delay(60000, cts.Token); // Reconnect every minute
                 }
             }),
@@ -649,13 +654,13 @@ public class LongRunningMemoryTests
                         var connection = await _testBase.CreateSignalRConnectionAsync("site1");
                         for (int i = 0; i < 100 && !cts.Token.IsCancellationRequested; i++)
                         {
-                            await connection.InvokeAsync("SendMessage", "user", "test");
-                            Interlocked.Increment(ref stats.SignalR);
+                            await connection.SendAsync("SendMessage", "user", "test");
+                            Interlocked.Increment(ref signalRCount);
                             await Task.Delay(10000, cts.Token);
                         }
-                        await connection.DisposeAsync();
+                        connection.Dispose();
                     }
-                    catch { Interlocked.Increment(ref stats.Errors); }
+                    catch { Interlocked.Increment(ref errorCount); }
                 }
             }),
             
@@ -678,7 +683,7 @@ public class LongRunningMemoryTests
                     
                     Console.WriteLine($"[{elapsed:hh\\:mm\\:ss}] Memory: {currentMemory / 1024 / 1024}MB (+{growthMB}MB), " +
                                     $"GC(0/1/2): {gen0}/{gen1}/{gen2}, " +
-                                    $"HTTP: {stats.Http}, SSE: {stats.Sse}, SignalR: {stats.SignalR}, Errors: {stats.Errors}");
+                                    $"HTTP: {httpCount}, SSE: {sseCount}, SignalR: {signalRCount}, Errors: {errorCount}");
                     
                     // Dump memory every hour
                     if (DateTime.UtcNow - lastHourlyDump > TimeSpan.FromHours(1))
@@ -710,7 +715,7 @@ public class LongRunningMemoryTests
         var totalGrowthMB = (endMemory - startMemory) / 1024 / 1024;
         
         Console.WriteLine($"\n[END] Final memory: {endMemory / 1024 / 1024}MB, Growth: {totalGrowthMB}MB");
-        Console.WriteLine($"Operations: HTTP: {stats.Http}, SSE: {stats.Sse}, SignalR: {stats.SignalR}, Errors: {stats.Errors}");
+        Console.WriteLine($"Operations: HTTP: {httpCount}, SSE: {sseCount}, SignalR: {signalRCount}, Errors: {errorCount}");
         Console.WriteLine($"GC Collections: Gen0: {GC.CollectionCount(0)}, Gen1: {GC.CollectionCount(1)}, Gen2: {GC.CollectionCount(2)}");
 
         // Analyze memory progression
@@ -723,7 +728,7 @@ public class LongRunningMemoryTests
 
         // Assertions
         Assert.True(totalGrowthMB < 500, $"Memory grew by {totalGrowthMB}MB over 4 hours, expected < 500MB");
-        Assert.True(stats.Errors < 50, $"{stats.Errors} errors occurred during test");
+        Assert.True(errorCount < 50, $"{errorCount} errors occurred during test");
         
         // Check for linear growth pattern (indicates leak)
         var recentGrowth = memorySnapshots.TakeLast(30).Select(s => s.Memory).ToList();
